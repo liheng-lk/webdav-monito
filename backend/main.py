@@ -288,6 +288,15 @@ def delete_task(task_id: str, current_user: str = Depends(get_current_user)):
 
 @app.post("/api/tasks/{task_id}/run")
 def trigger_task(task_id: str, background_tasks: BackgroundTasks, current_user: str = Depends(get_current_user)):
+    config = load_config()
+    task = next((t for t in config.tasks if t.id == task_id), None)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if not task.enabled:
+        task.enabled = True
+        task.status = "idle"
+        save_config(config)
+        logger.info(f"Re-enabled task {task.name} for manual run.")
     background_tasks.add_task(run_task, task_id)
     return {"message": "Task triggered"}
 

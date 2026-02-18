@@ -29,7 +29,10 @@ def get_parent_path(file_href: str) -> str:
 def run_task(task_id: str):
     config = load_config()
     task = next((t for t in config.tasks if t.id == task_id), None)
-    if not task or not task.enabled:
+    if not task:
+        return
+    if not task.enabled:
+        logger.info(f"Task {task_id} ({task.name}) is disabled, skipping.")
         return
 
     if task_id in running_tasks:
