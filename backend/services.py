@@ -5,7 +5,9 @@ import json
 import os
 import time
 import urllib3
+import concurrent.futures
 from requests.auth import HTTPBasicAuth, HTTPDigestAuth
+from urllib.parse import urljoin, unquote, urlparse
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -55,20 +57,9 @@ class WebDAVService:
         return False, last_error
 
     @staticmethod
-    def list_recursive(url, username, password, path, old_state=None, visited=None, depth=0):
-        if visited is None: visited = set()
-        
-        if depth > 20:
-            logger.warning(f"Max depth reached at {path}. Stopping recursion.")
-            return {}
-            
-        if path in visited:
-            logger.warning(f"Circular reference detected at {path}. Skipping.")
-            return {}
-        visited.add(path)
-
-        from urllib.parse import urljoin, unquote
+    def _list_dir_worker(url, username, password, path):
         results = {}
+        subdirs = []
         
         base_url = url if url.endswith('/') else url + '/'
         
@@ -95,11 +86,14 @@ class WebDAVService:
             resp.raise_for_status()
         except Exception as e:
             logger.error(f"WebDAV scan error for {path}: {e}")
-            if depth == 0:
-                raise Exception(f"WebDAV connection failed: {e}")
-            return {}
+            raise e
         
-        content = xmltodict.parse(resp.content.decode('utf-8'))
+        try:
+            content = xmltodict.parse(resp.content.decode('utf-8'))
+        except Exception as e:
+             logger.error(f"XML Parse error for {path}: {e}")
+             return {}, []
+
         multistatus = content.get('D:multistatus', {}) or content.get('multistatus', {})
         responses = multistatus.get('D:response', []) or multistatus.get('response', [])
         
@@ -119,6 +113,8 @@ class WebDAVService:
             is_dir = 'D:collection' in resourcetype or 'collection' in resourcetype if resourcetype else False
             
             is_self = False
+            # Check if it is current directory
+            # Heuristic: Compare lengths or trailing slash logic
             if clean_href.rstrip('/') == path.rstrip('/'):
                 is_self = True
             elif clean_href.endswith(path.rstrip('/')) and (len(clean_href) == len(path.rstrip('/')) or clean_href[-(len(path.rstrip('/'))+1)] == '/'):
@@ -134,37 +130,88 @@ class WebDAVService:
                 results[clean_href] = entry
                 continue
 
+            # Store result
+            results[clean_href] = entry
+            
             if is_dir:
-                should_recurse = True
+                # Prepare subdir path for next scan
+                sub_path = href
+                if href.startswith('http'):
+                    try:
+                        sub_path = urlparse(href).path
+                    except:
+                        sub_path = href.split(url.rstrip('/'))[-1]
                 
+                subdirs.append(sub_path)
                 
-                if old_state and clean_href in old_state:
-                    # High sensitivity mode: Always recurse, do not rely on mtime
-                    pass
+        return results, subdirs
 
-                if should_recurse:
-                    sub_path = href
-                    if href.startswith('http'):
-                        try:
-                            from urllib.parse import urlparse
-                            sub_path = urlparse(href).path
-                        except:
-                            sub_path = href.split(url.rstrip('/'))[-1]
-                    
-                    if sub_path.rstrip('/') == path.rstrip('/'):
-                         continue
-
-                    logger.info(f"  [WebDAV] -> Dir: {sub_path}")
-                    time.sleep(0.05)
-                    results.update(WebDAVService.list_recursive(url, username, password, sub_path, old_state, visited, depth + 1))
-            else:
-                results[clean_href] = entry
-                    
-        return results
+    @staticmethod
+    def list_recursive(url, username, password, path, old_state=None):
+        logger.info(f"Starting parallel WebDAV scan for {path}")
+        start_time = time.time()
+        
+        # Helper to avoid circular dependency in worker
+        # But worker is static, so it's fine.
+        
+        all_results = {}
+        visited = set()
+        visited.add(path)
+        
+        # Max 20 workers to be safe but fast
+        max_workers = 20
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
+        
+        # Map: Future -> (path, depth)
+        futures = {}
+        
+        # Init first job
+        f = executor.submit(WebDAVService._list_dir_worker, url, username, password, path)
+        futures[f] = (path, 0)
+        
+        try:
+            while futures:
+                # Wait for at least one future to complete
+                done, _ = concurrent.futures.wait(futures, return_when=concurrent.futures.FIRST_COMPLETED)
+                
+                for fut in done:
+                    p, depth = futures.pop(fut)
+                    try:
+                        res, subdirs = fut.result()
+                        all_results.update(res)
+                        
+                        if depth < 20: # Max depth safety
+                            for sd in subdirs:
+                                # Fix potential double-slash issues or relative paths
+                                # The worker returns raw hrefs or paths, we need to ensure they match what we expect
+                                # But visitor set should handle duplicates.
+                                # However, we need to be careful with paths.
+                                # Let's assume sub_path returned by worker is correct for next request.
+                                
+                                # Check if visited logic needs to handle full URLs or paths
+                                # _list_dir_worker returns sub_path derived from href.
+                                
+                                # Better normalization:
+                                sd_clean = sd.rstrip('/')
+                                if sd_clean not in visited:
+                                    visited.add(sd_clean)
+                                    logger.debug(f"Submitting: {sd}")
+                                    new_f = executor.submit(WebDAVService._list_dir_worker, url, username, password, sd)
+                                    futures[new_f] = (sd, depth + 1)
+                                    
+                    except Exception as e:
+                        logger.error(f"Failed to scan {p}: {e}")
+                        # Don't raise, just log and continue other branches
+                        
+        finally:
+            executor.shutdown(wait=False)
+            
+        logger.info(f"Parallel scan finished in {time.time() - start_time:.2f}s. Scanned {len(visited)} dirs. Total items: {len(all_results)}")
+        return all_results
 
     @staticmethod
     def list_directory(url, username, password, path):
-        from urllib.parse import urljoin, unquote
+        # Keep this for the file picker UI (simple single-level list)
         base_url = url if url.endswith('/') else url + '/'
         
         joined = urljoin(base_url, path)
@@ -295,7 +342,6 @@ class AlistService:
             logger.error(f"Refresh failed for {path}: {e}")
             return False
 
-
     @staticmethod
     def list_directory(url, token, path):
         try:
@@ -315,69 +361,84 @@ class AlistService:
         return []
 
     @staticmethod
-    def list_recursive_rich(url, token, path, old_state=None, visited=None, depth=0, refresh=False):
-        if visited is None: visited = set()
-        
-        if depth > 20:
-            logger.warning(f"Max depth reached at {path}. Stopping recursion.")
-            return {}
-            
-        if path in visited:
-            logger.warning(f"Circular reference detected at {path}. Skipping.")
-            return {}
-        visited.add(path)
-
+    def _list_dir_rich_worker(url, token, path, refresh=False):
         results = {}
+        subdirs = []
         headers = {"Authorization": token, "User-Agent": "WebDAV-Monitor-Premium"}
         
-        if refresh:
-            logger.info(f"Force refreshing source path: {path}")
-
         page = 1
         while True:
-            resp = requests.post(f"{url.rstrip('/')}/api/fs/list", 
-                headers=headers,
-                json={"path": path, "page": page, "per_page": 200, "refresh": refresh},
-                timeout=30, verify=False
-            )
-            if resp.status_code != 200:
-                break
+            try:
+                resp = requests.post(f"{url.rstrip('/')}/api/fs/list", 
+                    headers=headers,
+                    json={"path": path, "page": page, "per_page": 200, "refresh": refresh},
+                    timeout=30, verify=False
+                )
+                if resp.status_code != 200: break
                 
-            data = resp.json()
-            if data.get('code') != 200:
-                if depth == 0:
+                data = resp.json()
+                if data.get('code') != 200:
                     raise Exception(f"Alist API error: {data.get('message', 'Unknown')}")
-                break
-                
-            content = data['data'].get('content') or []
-            if not content:
-                break
-                
-            for f in content:
-                full_path = os.path.join(path, f['name'])
-                
-                mtime = f.get('modified')
-                sign = f.get('sign') or f.get('hash')
-                size = f.get('size')
-                is_dir = f['is_dir']
-                
-                entry = {"size": size, "mtime": mtime, "sign": sign, "is_dir": is_dir}
-                results[full_path] = entry
-                
-                if is_dir:
-                    should_recurse = True
-                    if old_state and full_path in old_state:
-                         pass
                     
-                    if should_recurse:
-                        logger.info(f"  [Alist] -> Dir: {full_path}")
-                        time.sleep(0.05)
-                        results.update(AlistService.list_recursive_rich(url, token, full_path, old_state, visited, depth + 1, refresh))
+                content = data['data'].get('content') or []
+                if not content: break
                 
+                for f in content:
+                    full_path = os.path.join(path, f['name'])
+                    mtime = f.get('modified')
+                    sign = f.get('sign') or f.get('hash')
+                    size = f.get('size')
+                    is_dir = f['is_dir']
+                    
+                    results[full_path] = {"size": size, "mtime": mtime, "sign": sign, "is_dir": is_dir}
+                    
+                    if is_dir:
+                        subdirs.append(full_path)
+                
+                total = data['data'].get('total', 0)
+                if page * 200 >= total: break
+                page += 1
+            except Exception as e:
+                logger.error(f"Error listing Alist path {path}: {e}")
+                raise e
             
-            total = data['data'].get('total', 0)
-            if page * 200 >= total:
-                break
-            page += 1
+        return results, subdirs
+
+    @staticmethod
+    def list_recursive_rich(url, token, path, old_state=None, refresh=False):
+        logger.info(f"Starting parallel Alist scan for {path}")
+        start_time = time.time()
+        
+        all_results = {}
+        visited = set()
+        visited.add(path)
+        
+        max_workers = 20
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
+        
+        futures = {}
+        f = executor.submit(AlistService._list_dir_rich_worker, url, token, path, refresh)
+        futures[f] = (path, 0)
+        
+        try:
+            while futures:
+                done, _ = concurrent.futures.wait(futures, return_when=concurrent.futures.FIRST_COMPLETED)
+                for fut in done:
+                    p, depth = futures.pop(fut)
+                    try:
+                        res, subdirs = fut.result()
+                        all_results.update(res)
+                        
+                        if depth < 20:
+                            for sd in subdirs:
+                                if sd not in visited:
+                                    visited.add(sd)
+                                    new_f = executor.submit(AlistService._list_dir_rich_worker, url, token, sd, refresh)
+                                    futures[new_f] = (sd, depth + 1)
+                    except Exception as e:
+                        logger.error(f"Failed to scan {p}: {e}")
+        finally:
+            executor.shutdown(wait=False)
             
-        return results
+        logger.info(f"Parallel Alist scan finished in {time.time() - start_time:.2f}s. Scanned {len(visited)} dirs. Total items: {len(all_results)}")
+        return all_results
