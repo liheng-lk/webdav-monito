@@ -91,6 +91,7 @@ import LoginView from './views/LoginView.vue'
 import DashboardView from './views/DashboardView.vue'
 import WebDAVModule from './views/WebDAVModule.vue'
 import AlistModule from './views/AlistModule.vue'
+import LocalModule from './views/LocalModule.vue'
 import LogsView from './views/LogsView.vue'
 import SettingsView from './views/SettingsView.vue'
 import AccountModal from './components/modals/AccountModal.vue'
@@ -115,7 +116,7 @@ const showDirPicker = ref(false)
 const testing = ref(false)
 
 const newAcc = ref({ type: 'webdav', name: '', url: '', username: '', password: '', token: '' })
-const newTask = ref({ name: '', src_account_id: '', dst_account_id: '', src_path: '/', dst_path: '/', interval: 600, enabled: true, refresh_source: false })
+const newTask = ref({ name: '', src_account_id: '', dst_account_id: '', src_path: '/', dst_path: '/', interval: 600, enabled: true, refresh_source: false, src_type: 'webdav', concurrency: 10, smart_scan: true })
 const picker = ref({ loading: false, items: [], path: '/', accountId: '', targetField: '' })
 
 const CurrentViewComponent = computed(() => {
@@ -123,6 +124,7 @@ const CurrentViewComponent = computed(() => {
     case 'dashboard': return DashboardView
     case 'webdav': return WebDAVModule
     case 'alist': return AlistModule
+    case 'local': return LocalModule
     case 'logs': return LogsView
     case 'settings': return SettingsView
     default: return DashboardView
@@ -145,6 +147,9 @@ const viewProps = computed(() => {
             const acc = accounts.value.find(a => a.id === t.src_account_id)
             return acc && acc.type === 'alist'
         }) 
+    }
+    case 'local': return {
+        tasks: tasks.value.filter(t => t.src_type === 'local')
     }
     case 'logs': return { logs: logs.value }
     case 'settings': return { locale: locale.value, avatar: avatar.value }
@@ -260,15 +265,19 @@ const openTaskModal = (task = null) => {
   if (task && task.id) {
     newTask.value = { ...task }
   } else {
+    const isLocal = currentView.value === 'local'
     newTask.value = { 
         name: '', 
-        src_account_id: srcAccountsForModal.value[0]?.id || '', 
+        src_account_id: isLocal ? '' : (srcAccountsForModal.value[0]?.id || ''), 
         dst_account_id: '', 
         src_path: '/', 
         dst_path: '/', 
         interval: 600, 
         enabled: true, 
-        refresh_source: false 
+        refresh_source: false,
+        src_type: isLocal ? 'local' : 'webdav',
+        concurrency: 10,
+        smart_scan: true
     }
   }
   showTaskModal.value = true
@@ -342,9 +351,11 @@ const triggerTask = async (id) => {
 }
 
 const openPicker = async (field, accId) => {
-  if (!accId) return notify('Please select an account first', 'error')
+  const isLocal = newTask.value.src_type === 'local' && field === 'src_path'
+  if (!isLocal && !accId) return notify('Please select an account first', 'error')
   picker.value.accountId = accId
   picker.value.targetField = field
+  picker.value.isLocal = isLocal
   picker.value.path = field === 'src_path' ? newTask.value.src_path : newTask.value.dst_path
   if (!picker.value.path?.startsWith('/')) picker.value.path = '/'
   
@@ -356,7 +367,12 @@ const browseTo = async (path) => {
   picker.value.loading = true
   picker.value.path = path
   try {
-    const res = await axios.post(`/api/accounts/${picker.value.accountId}/ls`, { path })
+    let res
+    if (picker.value.isLocal) {
+      res = await axios.post('/api/local/list', { path })
+    } else {
+      res = await axios.post(`/api/accounts/${picker.value.accountId}/ls`, { path })
+    }
     picker.value.items = res.data.sort((a,b) => (b.is_dir - a.is_dir) || a.name.localeCompare(b.name))
   } catch (err) {
     notify('Failed to list directory', 'error')

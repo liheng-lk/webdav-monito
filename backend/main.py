@@ -226,6 +226,32 @@ def list_account_dir(account_id: str, path: str = Body(..., embed=True), current
             raise HTTPException(status_code=400, detail="Could not get Alist token")
         return AlistService.list_directory(account.url, token, path)
 
+@app.post("/api/local/list")
+def list_local_dir(path: str = Body(..., embed=True), current_user: str = Depends(get_current_user)):
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail=f"Path not found: {path}")
+    if not os.path.isdir(path):
+        raise HTTPException(status_code=400, detail=f"Not a directory: {path}")
+    
+    items = []
+    try:
+        for entry in os.scandir(path):
+            try:
+                stat = entry.stat()
+                items.append({
+                    "name": entry.name,
+                    "path": os.path.join(path, entry.name),
+                    "is_dir": entry.is_dir(),
+                    "size": stat.st_size if entry.is_file() else 0,
+                    "mtime": stat.st_mtime
+                })
+            except (PermissionError, OSError):
+                continue
+    except PermissionError:
+        raise HTTPException(status_code=403, detail=f"Permission denied: {path}")
+    
+    return items
+
 @app.post("/api/tasks")
 def add_task(task: MonitorTask, current_user: str = Depends(get_current_user)):
     config = load_config()

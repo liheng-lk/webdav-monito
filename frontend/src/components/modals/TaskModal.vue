@@ -45,7 +45,7 @@
              <label class="block text-[10px] font-black uppercase tracking-widest mb-2 ml-1" style="color: var(--text-muted)">{{ $t('tasks.src_path') }}</label>
              <div class="relative">
                <input v-model="localTask.src_path" type="text" class="w-full rounded-xl pl-4 pr-20 py-3 md:pl-6 md:pr-24 md:py-4 focus:ring-2 focus:ring-purple-500 font-mono transition-all text-xs md:text-sm" :style="inputStyle" :placeholder="localTask.src_type === 'local' ? '/data/downloads' : '/dav/movies'">
-               <button v-if="(localTask.src_type || 'webdav') === 'webdav'" @click="$emit('browse', 'src_path', localTask.src_account_id)" class="absolute right-2 top-2 bottom-2 bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-400 px-3 rounded-lg text-[10px] font-black transition-all">{{ $t('tasks.browse') }}</button>
+               <button @click="$emit('browse', 'src_path', localTask.src_account_id)" class="absolute right-2 top-2 bottom-2 bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-400 px-3 rounded-lg text-[10px] font-black transition-all">{{ $t('tasks.browse') }}</button>
              </div>
            </div>
            

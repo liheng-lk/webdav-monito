@@ -72,7 +72,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { 
   LayersIcon, LayoutDashboardIcon, CloudIcon, ServerIcon, 
-  ActivityIcon, Settings2Icon, LogOutIcon, XIcon 
+  ActivityIcon, Settings2Icon, LogOutIcon, XIcon, FolderSyncIcon 
 } from 'lucide-vue-next'
 
 const { t } = useI18n()
@@ -95,7 +95,8 @@ const navSections = computed(() => [
     title: t('nav.modules'),
     items: [
       { id: 'webdav', icon: CloudIcon },
-      { id: 'alist', icon: ServerIcon }
+      { id: 'alist', icon: ServerIcon },
+      { id: 'local', icon: FolderSyncIcon }
     ]
   },
   {
