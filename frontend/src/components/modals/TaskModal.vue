@@ -1,14 +1,25 @@
 <template>
-  <div v-if="isOpen" class="fixed inset-0 z-[100] flex items-center justify-center p-6 backdrop-blur-xl animate-in fade-in duration-300" :style="{ background: 'var(--modal-overlay)' }">
-    <div class="w-full max-w-xl rounded-[2rem] p-8 md:p-12 relative overflow-hidden flex flex-col max-h-full glass-card" style="box-shadow: 0 0 100px rgba(0,0,0,0.3)">
-      <h3 class="text-2xl md:text-3xl font-black mb-6 md:mb-8" style="color: var(--text-heading)">{{ task.id ? $t('common.edit') : $t('tasks.add') }}</h3>
+  <div v-if="isOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" @click.self="$emit('close')">
+    <div class="w-full max-w-2xl bg-[#0f172a] rounded-2xl border border-gray-800 shadow-2xl p-6 md:p-8 relative overflow-y-auto max-h-[90vh]" style="box-shadow: 0 0 50px rgba(124, 58, 237, 0.1)">
       
-      <div class="space-y-4 md:space-y-6 overflow-y-auto custom-scrollbar flex-1 pr-2">
-         <div>
-           <label class="block text-[10px] font-black uppercase tracking-widest mb-2 ml-1" style="color: var(--text-muted)">{{ $t('tasks.name') }}</label>
-           <input v-model="localTask.name" type="text" class="w-full rounded-xl px-4 py-3 md:px-6 md:py-4 focus:ring-2 focus:ring-purple-500 font-bold transition-all" :style="inputStyle">
-         </div>
-         
+      <div class="flex justify-between items-center mb-6 md:mb-8">
+        <div>
+          <h2 class="text-2xl md:text-3xl font-black bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 tracking-tight">{{ task.id ? $t('tasks.edit') : $t('tasks.create') }}</h2>
+          <p class="text-xs md:text-sm font-medium mt-1" style="color: var(--text-secondary)">{{ $t('tasks.create_desc') }}</p>
+        </div>
+        <button @click="$emit('close')" class="p-2 rounded-xl hover:bg-white/5 transition-colors group">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-slate-400 group-hover:text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="space-y-6">
+          <div>
+            <label class="block text-[10px] font-black uppercase tracking-widest mb-2 ml-1" style="color: var(--text-muted)">{{ $t('tasks.name') }}</label>
+            <input v-model="localTask.name" type="text" class="w-full rounded-xl px-4 py-3 md:px-6 md:py-4 focus:ring-2 focus:ring-purple-500 font-bold transition-all" :style="inputStyle">
+          </div>
+          
          <div class="mb-4 mt-4">
               <label class="block text-[10px] font-black uppercase tracking-widest mb-2 ml-1" style="color: var(--text-muted)">Source Type</label>
               <div class="flex space-x-2">
@@ -26,20 +37,10 @@
             <label class="block text-[10px] font-black uppercase tracking-widest mb-2 ml-1" style="color: var(--text-muted)">{{ $t('tasks.src_acc') }}</label>
             <select v-model="localTask.src_account_id" class="w-full rounded-xl px-4 py-3 md:px-6 md:py-4 focus:ring-2 focus:ring-purple-500 font-bold transition-all appearance-none" :style="inputStyle">
               <option value="" disabled>-- {{ $t('tasks.src_acc') }} --</option>
-              <option v-for="acc in srcAccounts" :key="acc.id" :value="acc.id">{{ acc.name }}</option>
+              <option v-for="acc in srcAccounts" :key="acc.id" :value="acc.id">{{ acc.name }} ({{ acc.type }})</option>
             </select>
           </div>
           
-          <div class="space-y-2">
-            <label class="block text-[10px] font-black uppercase tracking-widest mb-2 ml-1" style="color: var(--text-muted)">{{ $t('tasks.dst_acc') }}</label>
-            <select v-model="localTask.dst_account_id" class="w-full rounded-xl px-4 py-3 md:px-6 md:py-4 focus:ring-2 focus:ring-purple-500 font-bold transition-all appearance-none" :style="inputStyle">
-              <option value="">-- None --</option>
-              <option v-for="acc in dstAccounts" :key="acc.id" :value="acc.id">{{ acc.name }}</option>
-            </select>
-          </div>
-        </div>
-
-         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
            <div class="space-y-2">
              <label class="block text-[10px] font-black uppercase tracking-widest mb-2 ml-1" style="color: var(--text-muted)">{{ $t('tasks.src_path') }}</label>
              <div class="relative">
@@ -47,6 +48,15 @@
                <button v-if="(localTask.src_type || 'webdav') === 'webdav'" @click="$emit('browse', 'src_path', localTask.src_account_id)" class="absolute right-2 top-2 bottom-2 bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-400 px-3 rounded-lg text-[10px] font-black transition-all">{{ $t('tasks.browse') }}</button>
              </div>
            </div>
+           
+           <div class="space-y-2">
+            <label class="block text-[10px] font-black uppercase tracking-widest mb-2 ml-1" style="color: var(--text-muted)">{{ $t('tasks.dst_acc') }}</label>
+            <select v-model="localTask.dst_account_id" class="w-full rounded-xl px-4 py-3 md:px-6 md:py-4 focus:ring-2 focus:ring-purple-500 font-bold transition-all appearance-none" :style="inputStyle">
+              <option value="" disabled>-- {{ $t('tasks.dst_acc') }} --</option>
+              <option v-for="acc in dstAccounts" :key="acc.id" :value="acc.id">{{ acc.name }}</option>
+            </select>
+           </div>
+           
            <div class="space-y-2">
              <label class="block text-[10px] font-black uppercase tracking-widest mb-2 ml-1" style="color: var(--text-muted)">{{ $t('tasks.dst_path') }}</label>
              <div class="relative">
@@ -78,9 +88,15 @@
              </label>
          </div>
 
-         <div>
-           <label class="block text-[10px] font-black uppercase tracking-widest mb-2 ml-1" style="color: var(--text-muted)">{{ $t('tasks.interval') }}</label>
-           <input v-model.number="localTask.interval" type="number" step="60" class="w-full rounded-xl px-4 py-3 md:px-6 md:py-4 focus:ring-2 focus:ring-purple-500 font-bold transition-all" :style="inputStyle">
+         <div class="grid grid-cols-2 gap-4">
+            <div>
+                <label class="block text-[10px] font-black uppercase tracking-widest mb-2 ml-1" style="color: var(--text-muted)">{{ $t('tasks.interval') }} (sec)</label>
+                <input v-model.number="localTask.interval" type="number" step="60" class="w-full rounded-xl px-4 py-3 md:px-6 md:py-4 focus:ring-2 focus:ring-purple-500 font-bold transition-all" :style="inputStyle">
+            </div>
+            <div>
+                <label class="block text-[10px] font-black uppercase tracking-widest mb-2 ml-1" style="color: var(--text-muted)">并发数 (Concurrency)</label>
+                <input v-model.number="localTask.concurrency" type="number" min="1" max="50" class="w-full rounded-xl px-4 py-3 md:px-6 md:py-4 focus:ring-2 focus:ring-purple-500 font-bold transition-all" :style="inputStyle" placeholder="10">
+            </div>
          </div>
       </div>
 

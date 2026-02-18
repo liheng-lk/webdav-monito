@@ -161,9 +161,9 @@ class WebDAVService:
         return results, subdirs
 
     @staticmethod
-    def list_recursive(url, username, password, path, old_state=None, smart_scan=True):
+    def list_recursive(url, username, password, path, old_state=None, smart_scan=True, concurrency=10):
         mode_str = "Smart" if smart_scan else "Deep"
-        logger.info(f"Starting {mode_str} WebDAV scan for {path} (Threads: 50)")
+        logger.info(f"Starting {mode_str} WebDAV scan for {path} (Threads: {concurrency})")
         start_time = time.time()
         
         all_results = {}
@@ -174,7 +174,7 @@ class WebDAVService:
         
         # Init Session with Connection Pooling
         session = requests.Session()
-        max_workers = 10
+        max_workers = concurrency
         adapter = HTTPAdapter(pool_connections=max_workers, pool_maxsize=max_workers, max_retries=3)
         session.mount('http://', adapter)
         session.mount('https://', adapter)
@@ -462,9 +462,9 @@ class AlistService:
         return results, subdirs
 
     @staticmethod
-    def list_recursive_rich(url, token, path, old_state=None, refresh=False, smart_scan=True):
+    def list_recursive_rich(url, token, path, old_state=None, refresh=False, smart_scan=True, concurrency=10):
         mode_str = "Smart" if smart_scan else "Deep"
-        logger.info(f"Starting {mode_str} Alist scan for {path} (Threads: 50)")
+        logger.info(f"Starting {mode_str} Alist scan for {path} (Threads: {concurrency})")
         start_time = time.time()
         
         all_results = {}
@@ -474,7 +474,7 @@ class AlistService:
         
         # Init Session
         session = requests.Session()
-        max_workers = 10
+        max_workers = concurrency
         adapter = HTTPAdapter(pool_connections=max_workers, pool_maxsize=max_workers, max_retries=3)
         session.mount('http://', adapter)
         session.mount('https://', adapter)

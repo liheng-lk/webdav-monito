@@ -24,6 +24,7 @@ class MonitorTask(BaseModel):
     src_path: str
     src_type: str = "webdav" # webdav, alist, local
     dst_path: Optional[str] = "/"
+    concurrency: int = 10
     interval: int = 600
     enabled: bool = True
     last_run: Optional[str] = None
