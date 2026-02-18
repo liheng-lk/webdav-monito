@@ -213,7 +213,7 @@ class WebDAVService:
                         all_results.update(res)
                         
                         # Logic for subdirs
-                        if depth < 20: 
+                        if depth < 50: 
                             for sd_raw in subdirs:
                                 sd_clean = sd_raw.rstrip('/')
                                 
