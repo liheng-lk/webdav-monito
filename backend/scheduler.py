@@ -219,6 +219,12 @@ def init_scheduler():
             update_task_job(task)
 
 def update_task_job(task: MonitorTask):
+    # Local tasks rely on Watchdog, no polling needed
+    if getattr(task, 'src_type', 'webdav') == 'local':
+        if scheduler.get_job(task.id):
+            scheduler.remove_job(task.id)
+        return
+
     if task.enabled:
         scheduler.add_job(
             run_task, 

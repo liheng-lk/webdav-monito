@@ -6,6 +6,7 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from backend.models import load_config, save_config, Account, MonitorTask, pwd_context
 from backend.services import WebDAVService, AlistService
 from backend.scheduler import init_scheduler, update_task_job, run_task
+from backend.watcher import WatcherManager
 import os
 import uuid
 import time
@@ -76,6 +77,7 @@ from contextlib import asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Initializing Monitor Service...")
     init_scheduler()
+    WatcherManager.update_watchers()
     yield
     logger.info("Shutting down...")
 
@@ -198,6 +200,7 @@ def delete_account(account_id: str, current_user: str = Depends(get_current_user
     config.accounts = [a for a in config.accounts if a.id != account_id]
     
     save_config(config)
+    WatcherManager.update_watchers()
     return {"message": "Deleted account and associated tasks"}
 
 @app.post("/api/accounts/test")
@@ -231,6 +234,7 @@ def add_task(task: MonitorTask, current_user: str = Depends(get_current_user)):
     config.tasks.append(task)
     save_config(config)
     update_task_job(task)
+    WatcherManager.update_watchers()
     return task
 
 @app.put("/api/tasks/{task_id}")
@@ -241,6 +245,7 @@ def update_task(task_id: str, task: MonitorTask, current_user: str = Depends(get
             config.tasks[i] = task
             save_config(config)
             update_task_job(task)
+            WatcherManager.update_watchers()
             return task
     raise HTTPException(status_code=404, detail="Task not found")
 
@@ -249,6 +254,7 @@ def delete_task(task_id: str, current_user: str = Depends(get_current_user)):
     config = load_config()
     config.tasks = [t for t in config.tasks if t.id != task_id]
     save_config(config)
+    WatcherManager.update_watchers()
     from backend.scheduler import scheduler
     if scheduler.get_job(task_id):
         scheduler.remove_job(task_id)

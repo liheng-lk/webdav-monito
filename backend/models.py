@@ -19,9 +19,10 @@ class Account(BaseModel):
 class MonitorTask(BaseModel):
     id: Optional[str] = None
     name: str
-    src_account_id: str
+    src_account_id: Optional[str] = None
     dst_account_id: Optional[str] = ""
     src_path: str
+    src_type: str = "webdav" # webdav, alist, local
     dst_path: Optional[str] = "/"
     interval: int = 600
     enabled: bool = True
