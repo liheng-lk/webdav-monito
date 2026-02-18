@@ -42,26 +42,24 @@ def run_task(task_id: str):
         task.status = "running"
         save_config(config)
 
-        # Local tasks are handled by Watchdog, not polling
-        if getattr(task, 'src_type', 'webdav') == 'local':
-            logger.info(f"Task {task.name} is a local Watchdog task, skipping poll-based scan.")
-            return
+        is_local = getattr(task, 'src_type', 'webdav') == 'local'
 
-        src_acc = next((a for a in config.accounts if a.id == task.src_account_id), None)
+        src_acc = None
         dst_acc = next((a for a in config.accounts if a.id == task.dst_account_id), None)
-        
-        if not src_acc:
-            task.enabled = False
-            task.status = "error: Scanning account missing (disabled)"
-            save_config(config)
-            if scheduler.get_job(task_id):
-                scheduler.remove_job(task_id)
-            raise Exception("Scanning account not found. Task has been disabled.")
+
+        if not is_local:
+            src_acc = next((a for a in config.accounts if a.id == task.src_account_id), None)
+            if not src_acc:
+                task.enabled = False
+                task.status = "error: Scanning account missing (disabled)"
+                save_config(config)
+                if scheduler.get_job(task_id):
+                    scheduler.remove_job(task_id)
+                raise Exception("Scanning account not found. Task has been disabled.")
 
         state_path = get_state_path(task_id)
         legacy_path = get_legacy_state_path(task_id)
         old_state = {}
-        
         
         if os.path.exists(state_path):
             try:
@@ -80,40 +78,72 @@ def run_task(task_id: str):
         else:
             logger.info("No previous state found, starting fresh scan.")
 
-        logger.info(f"Scanning {src_acc.name}:{task.src_path}...")
         scan_error = None
-        if src_acc.type == "webdav":
+        new_state = {}
+
+        if is_local:
+            local_path = task.src_path.rstrip('/')
+            logger.info(f"Scanning local path: {local_path} ...")
+            if not os.path.exists(local_path):
+                raise Exception(f"Local path not found: {local_path}")
             try:
-                new_state = WebDAVService.list_recursive(src_acc.url, src_acc.username, src_acc.password, task.src_path, old_state=old_state, smart_scan=task.smart_scan, concurrency=task.concurrency)
-            except Exception as scan_ex:
-                scan_error = str(scan_ex)
-                new_state = {}
-        elif src_acc.type == "alist":
-            old_token = src_acc.token
-            token = src_acc.token or AlistService.get_token(src_acc.url, src_acc.username, src_acc.password)
-            
-            if not token:
-                raise Exception(f"Cannot get Alist token for account {src_acc.name}")
-            
-            if token and token != old_token:
-                logger.info(f"Updating cached Alist token for account {src_acc.name}")
-                src_acc.token = token
-                save_config(config)
-            
-            refresh = getattr(task, 'refresh_source', False)
-            try:
-                new_state = AlistService.list_recursive_rich(src_acc.url, token, task.src_path, old_state=old_state, refresh=refresh, smart_scan=task.smart_scan, concurrency=task.concurrency)
+                for root, dirs, files in os.walk(local_path):
+                    rel_root = root[len(local_path):]
+                    if not rel_root.startswith('/'):
+                        rel_root = '/' + rel_root
+                    dir_key = task.src_path.rstrip('/') + rel_root.rstrip('/')
+                    if dir_key:
+                        new_state[dir_key + '/'] = {'is_dir': True, 'mtime': str(os.path.getmtime(root)), 'size': 0}
+                    for fname in files:
+                        fpath = os.path.join(root, fname)
+                        try:
+                            stat = os.stat(fpath)
+                            file_key = dir_key.rstrip('/') + '/' + fname
+                            new_state[file_key] = {
+                                'is_dir': False,
+                                'mtime': str(stat.st_mtime),
+                                'size': stat.st_size
+                            }
+                        except (PermissionError, OSError):
+                            continue
+                logger.info(f"Local scan found {len(new_state)} items.")
             except Exception as scan_ex:
                 scan_error = str(scan_ex)
                 new_state = {}
         else:
-            new_state = {}
+            src_name = src_acc.name if src_acc else "unknown"
+            logger.info(f"Scanning {src_name}:{task.src_path}...")
+            if src_acc.type == "webdav":
+                try:
+                    new_state = WebDAVService.list_recursive(src_acc.url, src_acc.username, src_acc.password, task.src_path, old_state=old_state, smart_scan=task.smart_scan, concurrency=task.concurrency)
+                except Exception as scan_ex:
+                    scan_error = str(scan_ex)
+                    new_state = {}
+            elif src_acc.type == "alist":
+                old_token = src_acc.token
+                token = src_acc.token or AlistService.get_token(src_acc.url, src_acc.username, src_acc.password)
+                
+                if not token:
+                    raise Exception(f"Cannot get Alist token for account {src_acc.name}")
+                
+                if token and token != old_token:
+                    logger.info(f"Updating cached Alist token for account {src_acc.name}")
+                    src_acc.token = token
+                    save_config(config)
+                
+                refresh = getattr(task, 'refresh_source', False)
+                try:
+                    new_state = AlistService.list_recursive_rich(src_acc.url, token, task.src_path, old_state=old_state, refresh=refresh, smart_scan=task.smart_scan, concurrency=task.concurrency)
+                except Exception as scan_ex:
+                    scan_error = str(scan_ex)
+                    new_state = {}
         
         if scan_error and not new_state:
             raise Exception(f"Scan failed: {scan_error}")
         
         if not new_state and not old_state:
-            logger.warning(f"Scan returned 0 items for {src_acc.name}:{task.src_path}. Source may be empty or unreachable.")
+            src_label = task.src_path if is_local else f"{src_acc.name}:{task.src_path}"
+            logger.warning(f"Scan returned 0 items for {src_label}. Source may be empty or unreachable.")
         
         logger.info(f"Scan completed. Found {len(new_state)} items (Files + Dirs).")
 
