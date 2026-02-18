@@ -1,0 +1,183 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Ma+Shan+Zheng&display=swap');
+
+.font-xingkai {
+  font-family: 'Ma Shan Zheng', cursive;
+}
+
+:root {
+  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  /* ===== Dark Theme (Default) ===== */
+  --bg-page: #111111;
+  --bg-overlay: rgba(0, 0, 0, 0.80);
+  --bg-card: rgba(28, 28, 36, 0.75);
+  --bg-card-solid: #1C1C24;
+  --bg-card-hover: rgba(37, 37, 48, 0.80);
+  --bg-elevated: rgba(37, 37, 48, 0.85);
+  --bg-input: rgba(15, 23, 42, 0.6);
+  --bg-sidebar: rgba(17, 17, 17, 0.92);
+
+  --text-heading: #ffffff;
+  --text-body: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --text-subtle: #475569;
+
+  --border-color: rgba(255, 255, 255, 0.06);
+  --border-sidebar: rgba(28, 28, 36, 0.8);
+
+  --modal-overlay: rgba(2, 6, 23, 0.80);
+  --shadow-card: 0 8px 32px rgba(0, 0, 0, 0.3);
+  --glass-blur: 20px;
+}
+
+[data-theme="light"] {
+  --bg-page: #f0f2f5;
+  --bg-overlay: rgba(240, 242, 245, 0.75);
+  --bg-card: rgba(255, 255, 255, 0.65);
+  --bg-card-solid: rgba(255, 255, 255, 0.80);
+  --bg-card-hover: rgba(255, 255, 255, 0.78);
+  --bg-elevated: rgba(255, 255, 255, 0.85);
+  --bg-input: rgba(241, 245, 249, 0.75);
+  --bg-sidebar: rgba(255, 255, 255, 0.88);
+
+  --text-heading: #0f172a;
+  --text-body: #1e293b;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  --text-subtle: #94a3b8;
+
+  --border-color: rgba(0, 0, 0, 0.08);
+  --border-sidebar: rgba(0, 0, 0, 0.06);
+
+  --modal-overlay: rgba(100, 116, 139, 0.60);
+  --shadow-card: 0 8px 32px rgba(0, 0, 0, 0.08);
+  --glass-blur: 24px;
+}
+
+body {
+  margin: 0;
+  display: flex;
+  min-width: 320px;
+  min-height: 100vh;
+  background-color: var(--bg-page);
+  color: var(--text-body);
+}
+
+#app {
+  width: 100%;
+}
+
+/* Wallpaper background */
+.wallpaper-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  transition: opacity 1.5s ease-in-out;
+}
+
+.wallpaper-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  background: var(--bg-overlay);
+  backdrop-filter: blur(2px);
+}
+
+/* Glassmorphism card */
+.glass-card {
+  background: var(--bg-card);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-card);
+}
+
+.glass-card-hover:hover {
+  background: var(--bg-card-hover);
+}
+
+/* Custom scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--text-subtle);
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Selection */
+::selection {
+  background: rgba(99, 102, 241, 0.3);
+}
+
+/* Smooth theme transitions */
+*,
+*::before,
+*::after {
+  transition-property: background-color, border-color, color;
+  transition-duration: 0s;
+}
+
+[data-theme] *,
+[data-theme] *::before,
+[data-theme] *::after {
+  transition-duration: 0.3s;
+}
+
+/* Animations */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slide-in-from-bottom-4 {
+  from {
+    transform: translateY(1rem);
+  }
+
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-in-from-top-4 {
+  from {
+    transform: translateY(-1rem);
+  }
+
+  to {
+    transform: translateY(0);
+  }
+}
+
+.animate-in {
+  animation: fade-in 0.5s ease-out, slide-in-from-bottom-4 0.5s ease-out;
+}
+
+.fade-in {
+  animation: fade-in 0.5s ease-out;
+}

@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  webdav-monitor:
+    build: .
+    container_name: webdav-monitor
+    restart: always
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - CONFIG_PATH=data/config.json
+      - JWT_SECRET=a_very_secure_and_long_random_jwt_secret_32_chars
+    # Ensure it's running on x86 if needed
+    # platform: linux/amd64

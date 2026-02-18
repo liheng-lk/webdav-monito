@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# Node
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# App Data
+data/
+*.json
+webdav_state.json
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
