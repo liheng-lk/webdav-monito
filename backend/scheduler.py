@@ -42,6 +42,11 @@ def run_task(task_id: str):
         task.status = "running"
         save_config(config)
 
+        # Local tasks are handled by Watchdog, not polling
+        if getattr(task, 'src_type', 'webdav') == 'local':
+            logger.info(f"Task {task.name} is a local Watchdog task, skipping poll-based scan.")
+            return
+
         src_acc = next((a for a in config.accounts if a.id == task.src_account_id), None)
         dst_acc = next((a for a in config.accounts if a.id == task.dst_account_id), None)
         
