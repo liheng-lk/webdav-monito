@@ -137,28 +137,10 @@ class WebDAVService:
             if is_dir:
                 should_recurse = True
                 
+                
                 if old_state and clean_href in old_state:
-                    old_entry = old_state[clean_href]
-                    old_mtime = old_entry.get('mtime')
-                    old_etag = old_entry.get('etag')
-                    
-                    match = False
-                    if mtime and old_mtime and mtime == old_mtime:
-                        match = True
-                    
-                    if match:
-                        logger.info(f"  [SmartScan] Skipping unchanged dir: {clean_href} (mtime: {mtime})")
-                        should_recurse = False
-                        
-                        count = 0
-                        prefix = clean_href + "/"
-                        results[clean_href] = entry
-                        
-                        for k, v in old_state.items():
-                            if k == clean_href: continue
-                            if k.startswith(prefix):
-                                results[k] = v
-                                count += 1
+                    # High sensitivity mode: Always recurse, do not rely on mtime
+                    pass
 
                 if should_recurse:
                     sub_path = href
@@ -385,19 +367,7 @@ class AlistService:
                 if is_dir:
                     should_recurse = True
                     if old_state and full_path in old_state:
-                        old_entry = old_state[full_path]
-                        old_mtime = old_entry.get('mtime')
-                        if mtime and old_mtime and mtime == old_mtime:
-                            logger.info(f"  [SmartScan] Skipping unchanged dir: {full_path} (mtime: {mtime})")
-                            should_recurse = False
-                            
-                            count = 0
-                            prefix = full_path + "/"
-                            for k, v in old_state.items():
-                                if k == full_path: continue
-                                if k.startswith(prefix):
-                                    results[k] = v
-                                    count += 1
+                         pass
                     
                     if should_recurse:
                         logger.info(f"  [Alist] -> Dir: {full_path}")
