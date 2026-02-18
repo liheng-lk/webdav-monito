@@ -6,7 +6,9 @@ import os
 import time
 import urllib3
 import concurrent.futures
+import threading
 from requests.auth import HTTPBasicAuth, HTTPDigestAuth
+from requests.adapters import HTTPAdapter
 from urllib.parse import urljoin, unquote, urlparse
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -57,7 +59,7 @@ class WebDAVService:
         return False, last_error
 
     @staticmethod
-    def _list_dir_worker(url, username, password, path):
+    def _list_dir_worker(session, url, username, password, path):
         results = {}
         subdirs = []
         
@@ -72,17 +74,34 @@ class WebDAVService:
             else:
                 target_url = joined
         
-        auth = (username, password)
+        # Determine auth mechanism (basic vs digest)
+        # Optimization: We can't easily guess, so we try Basic first.
+        # Ideally, main thread detects auth type once and passes it down.
+        # But for robustness, we keep try-catch or assume Basic if not specified.
+        # Since session keeps connection alive, maybe auth header is cached?
+        # Requests Session handles cookies but not Basic Auth unless set on session.auth
+        # We'll set auth on session if possible, or pass it.
+        
+        # To avoid overhead of testing auth every time, we rely on passed params
+        # But requests require auth per request if not set on session.
+        
         headers = {
             'Depth': '1',
             'User-Agent': 'WebDAV-Monitor-Premium',
             'Accept': 'application/xml, text/xml'
         }
         
+        # Try passed auth (Basic)
+        # If session has auth set, we don't need to pass it.
+        # But we don't know if it's Basic or Digest.
+        # We will assume Basic for speed, fallback to Digest if 401.
+        
         try:
-            resp = requests.request('PROPFIND', target_url, auth=auth, headers=headers, timeout=30, verify=False)
+            # We use session.request
+            resp = session.request('PROPFIND', target_url, auth=HTTPBasicAuth(username, password), headers=headers, timeout=30, verify=False)
             if resp.status_code == 401:
-                resp = requests.request('PROPFIND', target_url, auth=HTTPDigestAuth(username, password), headers=headers, timeout=30, verify=False)
+                # Fallback to Digest
+                resp = session.request('PROPFIND', target_url, auth=HTTPDigestAuth(username, password), headers=headers, timeout=30, verify=False)
             resp.raise_for_status()
         except Exception as e:
             logger.error(f"WebDAV scan error for {path}: {e}")
@@ -113,8 +132,6 @@ class WebDAVService:
             is_dir = 'D:collection' in resourcetype or 'collection' in resourcetype if resourcetype else False
             
             is_self = False
-            # Check if it is current directory
-            # Heuristic: Compare lengths or trailing slash logic
             if clean_href.rstrip('/') == path.rstrip('/'):
                 is_self = True
             elif clean_href.endswith(path.rstrip('/')) and (len(clean_href) == len(path.rstrip('/')) or clean_href[-(len(path.rstrip('/'))+1)] == '/'):
@@ -130,83 +147,118 @@ class WebDAVService:
                 results[clean_href] = entry
                 continue
 
-            # Store result
             results[clean_href] = entry
             
             if is_dir:
-                # Prepare subdir path for next scan
                 sub_path = href
                 if href.startswith('http'):
                     try:
                         sub_path = urlparse(href).path
                     except:
                         sub_path = href.split(url.rstrip('/'))[-1]
-                
                 subdirs.append(sub_path)
                 
         return results, subdirs
 
     @staticmethod
-    def list_recursive(url, username, password, path, old_state=None):
-        logger.info(f"Starting parallel WebDAV scan for {path}")
+    def list_recursive(url, username, password, path, old_state=None, smart_scan=True):
+        mode_str = "Smart" if smart_scan else "Deep"
+        logger.info(f"Starting {mode_str} WebDAV scan for {path} (Threads: 50)")
         start_time = time.time()
-        
-        # Helper to avoid circular dependency in worker
-        # But worker is static, so it's fine.
         
         all_results = {}
         visited = set()
+        visited_lock = threading.Lock()
+        
         visited.add(path)
         
-        # Max 20 workers to be safe but fast
-        max_workers = 20
-        executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
+        # Init Session with Connection Pooling
+        session = requests.Session()
+        max_workers = 50
+        adapter = HTTPAdapter(pool_connections=max_workers, pool_maxsize=max_workers)
+        session.mount('http://', adapter)
+        session.mount('https://', adapter)
         
-        # Map: Future -> (path, depth)
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
         futures = {}
         
-        # Init first job
-        f = executor.submit(WebDAVService._list_dir_worker, url, username, password, path)
+        # Initial task
+        f = executor.submit(WebDAVService._list_dir_worker, session, url, username, password, path)
         futures[f] = (path, 0)
+        
+        # Smart scan helper: Function to copy descendants
+        def copy_descendants_from_old_state(skip_path):
+            count = 0
+            if not old_state: return 0
+            
+            # Simple prefix match (can be optimized if needed, but acceptable for now)
+            prefix = skip_path + "/"
+            for k, v in old_state.items():
+                if k == skip_path: continue
+                if k.startswith(prefix):
+                    all_results[k] = v
+                    count += 1
+            return count
         
         try:
             while futures:
-                # Wait for at least one future to complete
                 done, _ = concurrent.futures.wait(futures, return_when=concurrent.futures.FIRST_COMPLETED)
                 
                 for fut in done:
                     p, depth = futures.pop(fut)
                     try:
                         res, subdirs = fut.result()
+                        
+                        # Add current dir results
                         all_results.update(res)
                         
-                        if depth < 20: # Max depth safety
-                            for sd in subdirs:
-                                # Fix potential double-slash issues or relative paths
-                                # The worker returns raw hrefs or paths, we need to ensure they match what we expect
-                                # But visitor set should handle duplicates.
-                                # However, we need to be careful with paths.
-                                # Let's assume sub_path returned by worker is correct for next request.
+                        # Logic for subdirs
+                        if depth < 20: 
+                            for sd_raw in subdirs:
+                                sd_clean = sd_raw.rstrip('/')
                                 
-                                # Check if visited logic needs to handle full URLs or paths
-                                # _list_dir_worker returns sub_path derived from href.
+                                # Check lock
+                                should_process = False
+                                with visited_lock:
+                                    if sd_clean not in visited:
+                                        visited.add(sd_clean)
+                                        should_process = True
                                 
-                                # Better normalization:
-                                sd_clean = sd.rstrip('/')
-                                if sd_clean not in visited:
-                                    visited.add(sd_clean)
-                                    logger.debug(f"Submitting: {sd}")
-                                    new_f = executor.submit(WebDAVService._list_dir_worker, url, username, password, sd)
-                                    futures[new_f] = (sd, depth + 1)
+                                if should_process:
+                                    # SMART SCAN LOGIC
+                                    should_recurse = True
+                                    
+                                    if smart_scan and old_state and sd_clean in old_state and sd_clean in res:
+                                        # Check if modified
+                                        current_entry = res[sd_clean]
+                                        old_entry = old_state[sd_clean]
+                                        
+                                        # Compare mtime
+                                        cur_mtime = current_entry.get('mtime')
+                                        old_mtime = old_entry.get('mtime')
+                                        
+                                        if cur_mtime and old_mtime and cur_mtime == old_mtime:
+                                            # Match! Skip recursion
+                                            logger.debug(f"SmartScan: Skipping unchanged {sd_clean}")
+                                            should_recurse = False
+                                            # We must copy descendants!
+                                            # This happens in main thread, safe.
+                                            copied = copy_descendants_from_old_state(sd_clean)
+                                            # logger.debug(f"  -> Copied {copied} items")
+
+                                    if should_recurse:
+                                        # Submit new task
+                                        new_f = executor.submit(WebDAVService._list_dir_worker, session, url, username, password, sd_raw)
+                                        futures[new_f] = (sd_raw, depth + 1)
                                     
                     except Exception as e:
                         logger.error(f"Failed to scan {p}: {e}")
-                        # Don't raise, just log and continue other branches
                         
         finally:
             executor.shutdown(wait=False)
+            session.close()
             
-        logger.info(f"Parallel scan finished in {time.time() - start_time:.2f}s. Scanned {len(visited)} dirs. Total items: {len(all_results)}")
+        logger.info(f"WebDAV Scan finished in {time.time() - start_time:.2f}s. Scanned {len(visited)} dirs. Total: {len(all_results)}")
         return all_results
 
     @staticmethod
@@ -361,7 +413,7 @@ class AlistService:
         return []
 
     @staticmethod
-    def _list_dir_rich_worker(url, token, path, refresh=False):
+    def _list_dir_rich_worker(session, url, token, path, refresh=False):
         results = {}
         subdirs = []
         headers = {"Authorization": token, "User-Agent": "WebDAV-Monitor-Premium"}
@@ -369,7 +421,8 @@ class AlistService:
         page = 1
         while True:
             try:
-                resp = requests.post(f"{url.rstrip('/')}/api/fs/list", 
+                # Use session
+                resp = session.post(f"{url.rstrip('/')}/api/fs/list", 
                     headers=headers,
                     json={"path": path, "page": page, "per_page": 200, "refresh": refresh},
                     timeout=30, verify=False
@@ -378,7 +431,11 @@ class AlistService:
                 
                 data = resp.json()
                 if data.get('code') != 200:
-                    raise Exception(f"Alist API error: {data.get('message', 'Unknown')}")
+                    # Log but don't break immediately if page 1 failed? 
+                    # If page 1 fails, we raise.
+                    if page == 1:
+                        raise Exception(f"Alist API error: {data.get('message', 'Unknown')}")
+                    break
                     
                 content = data['data'].get('content') or []
                 if not content: break
@@ -405,20 +462,39 @@ class AlistService:
         return results, subdirs
 
     @staticmethod
-    def list_recursive_rich(url, token, path, old_state=None, refresh=False):
-        logger.info(f"Starting parallel Alist scan for {path}")
+    def list_recursive_rich(url, token, path, old_state=None, refresh=False, smart_scan=True):
+        mode_str = "Smart" if smart_scan else "Deep"
+        logger.info(f"Starting {mode_str} Alist scan for {path} (Threads: 50)")
         start_time = time.time()
         
         all_results = {}
         visited = set()
+        visited_lock = threading.Lock()
         visited.add(path)
         
-        max_workers = 20
-        executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
+        # Init Session
+        session = requests.Session()
+        max_workers = 50
+        adapter = HTTPAdapter(pool_connections=max_workers, pool_maxsize=max_workers)
+        session.mount('http://', adapter)
+        session.mount('https://', adapter)
         
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
         futures = {}
-        f = executor.submit(AlistService._list_dir_rich_worker, url, token, path, refresh)
+        
+        f = executor.submit(AlistService._list_dir_rich_worker, session, url, token, path, refresh)
         futures[f] = (path, 0)
+        
+        def copy_descendants_from_old_state(skip_path):
+            count = 0
+            if not old_state: return 0
+            prefix = skip_path + "/"
+            for k, v in old_state.items():
+                if k == skip_path: continue
+                if k.startswith(prefix):
+                    all_results[k] = v
+                    count += 1
+            return count
         
         try:
             while futures:
@@ -431,14 +507,32 @@ class AlistService:
                         
                         if depth < 20:
                             for sd in subdirs:
-                                if sd not in visited:
-                                    visited.add(sd)
-                                    new_f = executor.submit(AlistService._list_dir_rich_worker, url, token, sd, refresh)
-                                    futures[new_f] = (sd, depth + 1)
+                                
+                                should_process = False
+                                with visited_lock:
+                                    if sd not in visited:
+                                        visited.add(sd)
+                                        should_process = True
+                                        
+                                if should_process:
+                                    # SMART Logic
+                                    should_recurse = True
+                                    if smart_scan and old_state and sd in old_state and sd in res:
+                                        cur_mtime = res[sd].get('mtime')
+                                        old_mtime = old_state[sd].get('mtime')
+                                        if cur_mtime and old_mtime and cur_mtime == old_mtime:
+                                            logger.debug(f"SmartScan: Skipping {sd}")
+                                            should_recurse = False
+                                            copy_descendants_from_old_state(sd)
+                                    
+                                    if should_recurse:
+                                        new_f = executor.submit(AlistService._list_dir_rich_worker, session, url, token, sd, refresh)
+                                        futures[new_f] = (sd, depth + 1)
                     except Exception as e:
                         logger.error(f"Failed to scan {p}: {e}")
         finally:
             executor.shutdown(wait=False)
+            session.close()
             
-        logger.info(f"Parallel Alist scan finished in {time.time() - start_time:.2f}s. Scanned {len(visited)} dirs. Total items: {len(all_results)}")
+        logger.info(f"Alist Scan finished in {time.time() - start_time:.2f}s. Scanned {len(visited)} dirs. Total: {len(all_results)}")
         return all_results

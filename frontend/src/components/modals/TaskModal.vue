@@ -55,6 +55,17 @@
              </label>
          </div>
 
+         <div class="bg-indigo-500/10 p-4 rounded-xl flex items-center justify-between border border-indigo-500/20 mb-4">
+             <div>
+                 <h4 class="text-indigo-400 font-bold text-xs md:text-sm">智能扫描 (Smart Scan)</h4>
+                 <p class="text-[10px] mt-1" style="color: var(--text-secondary)">跳过未变更目录 (Skip unchanged)</p>
+             </div>
+             <label class="relative inline-flex items-center cursor-pointer">
+               <input type="checkbox" v-model="localTask.smart_scan" class="sr-only peer">
+               <div class="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+             </label>
+         </div>
+
          <div>
            <label class="block text-[10px] font-black uppercase tracking-widest mb-2 ml-1" style="color: var(--text-muted)">{{ $t('tasks.interval') }}</label>
            <input v-model.number="localTask.interval" type="number" step="60" class="w-full rounded-xl px-4 py-3 md:px-6 md:py-4 focus:ring-2 focus:ring-purple-500 font-bold transition-all" :style="inputStyle">

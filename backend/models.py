@@ -28,6 +28,7 @@ class MonitorTask(BaseModel):
     last_run: Optional[str] = None
     status: str = "idle"
     refresh_source: bool = False
+    smart_scan: bool = True
 
 class UserSettings(BaseModel):
     username: str = "admin"

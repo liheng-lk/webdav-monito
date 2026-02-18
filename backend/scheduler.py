@@ -79,7 +79,7 @@ def run_task(task_id: str):
         scan_error = None
         if src_acc.type == "webdav":
             try:
-                new_state = WebDAVService.list_recursive(src_acc.url, src_acc.username, src_acc.password, task.src_path, old_state=old_state)
+                new_state = WebDAVService.list_recursive(src_acc.url, src_acc.username, src_acc.password, task.src_path, old_state=old_state, smart_scan=task.smart_scan)
             except Exception as scan_ex:
                 scan_error = str(scan_ex)
                 new_state = {}
@@ -97,7 +97,7 @@ def run_task(task_id: str):
             
             refresh = getattr(task, 'refresh_source', False)
             try:
-                new_state = AlistService.list_recursive_rich(src_acc.url, token, task.src_path, old_state=old_state, refresh=refresh)
+                new_state = AlistService.list_recursive_rich(src_acc.url, token, task.src_path, old_state=old_state, refresh=refresh, smart_scan=task.smart_scan)
             except Exception as scan_ex:
                 scan_error = str(scan_ex)
                 new_state = {}
