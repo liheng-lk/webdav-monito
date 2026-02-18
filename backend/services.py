@@ -98,10 +98,10 @@ class WebDAVService:
         
         try:
             # We use session.request
-            resp = session.request('PROPFIND', target_url, auth=HTTPBasicAuth(username, password), headers=headers, timeout=30, verify=False)
+            resp = session.request('PROPFIND', target_url, auth=HTTPBasicAuth(username, password), headers=headers, timeout=60, verify=False)
             if resp.status_code == 401:
                 # Fallback to Digest
-                resp = session.request('PROPFIND', target_url, auth=HTTPDigestAuth(username, password), headers=headers, timeout=30, verify=False)
+                resp = session.request('PROPFIND', target_url, auth=HTTPDigestAuth(username, password), headers=headers, timeout=60, verify=False)
             resp.raise_for_status()
         except Exception as e:
             logger.error(f"WebDAV scan error for {path}: {e}")
@@ -174,8 +174,8 @@ class WebDAVService:
         
         # Init Session with Connection Pooling
         session = requests.Session()
-        max_workers = 50
-        adapter = HTTPAdapter(pool_connections=max_workers, pool_maxsize=max_workers)
+        max_workers = 10
+        adapter = HTTPAdapter(pool_connections=max_workers, pool_maxsize=max_workers, max_retries=3)
         session.mount('http://', adapter)
         session.mount('https://', adapter)
         
@@ -386,7 +386,7 @@ class AlistService:
                     "refresh": True,
                     "page": 1,
                     "per_page": 1
-                }, timeout=30, verify=False
+                }, timeout=60, verify=False
             )
             data = resp.json()
             return data.get('code') == 200
@@ -425,7 +425,7 @@ class AlistService:
                 resp = session.post(f"{url.rstrip('/')}/api/fs/list", 
                     headers=headers,
                     json={"path": path, "page": page, "per_page": 200, "refresh": refresh},
-                    timeout=30, verify=False
+                    timeout=60, verify=False
                 )
                 if resp.status_code != 200: break
                 
@@ -474,8 +474,8 @@ class AlistService:
         
         # Init Session
         session = requests.Session()
-        max_workers = 50
-        adapter = HTTPAdapter(pool_connections=max_workers, pool_maxsize=max_workers)
+        max_workers = 10
+        adapter = HTTPAdapter(pool_connections=max_workers, pool_maxsize=max_workers, max_retries=3)
         session.mount('http://', adapter)
         session.mount('https://', adapter)
         
