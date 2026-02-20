@@ -58,6 +58,7 @@
         @trigger="$emit('trigger-task', $event)"
         @edit="$emit('edit-task', $event)"
         @delete="$emit('delete-task', $event)"
+        @history="$emit('history-task', $event)"
       />
     </div>
   </div>
@@ -73,5 +74,5 @@ defineProps({
   tasks: { type: Array, default: () => [] }
 })
 
-defineEmits(['add-account', 'test-account', 'delete-account', 'add-task', 'trigger-task', 'edit-task', 'delete-task'])
+defineEmits(['add-account', 'test-account', 'delete-account', 'add-task', 'trigger-task', 'edit-task', 'delete-task', 'history-task'])
 </script>

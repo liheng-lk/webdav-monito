@@ -300,6 +300,17 @@ def trigger_task(task_id: str, background_tasks: BackgroundTasks, current_user: 
     background_tasks.add_task(run_task, task_id)
     return {"message": "Task triggered"}
 
+@app.get("/api/tasks/{task_id}/history")
+def get_task_history(task_id: str, current_user: str = Depends(get_current_user)):
+    config = load_config()
+    records = [r.model_dump() for r in config.task_history if r.task_id == task_id]
+    return records[-50:]
+
+@app.get("/api/stats/history")
+def get_stats_history(current_user: str = Depends(get_current_user)):
+    config = load_config()
+    return [r.model_dump() for r in config.task_history]
+
 @app.get("/api/wallpaper")
 def get_wallpapers():
     import requests as req

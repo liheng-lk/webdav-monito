@@ -34,11 +34,14 @@
                    </span>
                  </div>
                </td>
-               <td class="p-6 text-xs font-medium" style="color: var(--text-secondary)">{{ Math.round(task.interval/60) }} {{ $t('tasks.minutes') }}</td>
+               <td class="p-6 text-xs font-medium" style="color: var(--text-secondary)">{{ formatSchedule(task) }}</td>
                <td class="p-6 text-[10px] font-mono" style="color: var(--text-muted)">{{ formatTime(task.last_run) }}</td>
                <td class="p-6 text-right space-x-3">
                  <button @click="$emit('trigger', task.id)" class="text-indigo-400 font-bold text-[10px] uppercase hover:text-indigo-300 transition-colors" :title="$t('tasks.run_now')">
                     <PlayIcon class="w-4 h-4" />
+                 </button>
+                 <button @click="$emit('history', task)" class="text-amber-400 font-bold text-[10px] uppercase hover:text-amber-300 transition-colors" :title="$t('history.title')">
+                    <HistoryIcon class="w-4 h-4" />
                  </button>
                  <button @click="$emit('edit', task)" class="text-emerald-400 font-bold text-[10px] uppercase hover:text-emerald-300 transition-colors" :title="$t('common.edit')">
                     <Settings2Icon class="w-4 h-4" />
@@ -77,7 +80,7 @@
         <div class="grid grid-cols-2 gap-4 text-[10px] pt-4 mt-2" style="color: var(--text-muted); border-top: 1px solid var(--border-color)">
           <div>
             <span class="block uppercase tracking-wider mb-1">{{ $t('tasks.interval') }}</span>
-            <span class="font-mono" style="color: var(--text-body)">{{ Math.round(task.interval/60) }} {{ $t('tasks.minutes') }}</span>
+            <span class="font-mono" style="color: var(--text-body)">{{ formatSchedule(task) }}</span>
           </div>
           <div class="text-right">
             <span class="block uppercase tracking-wider mb-1">{{ $t('tasks.last_run') }}</span>
@@ -86,28 +89,30 @@
         </div>
 
         <div class="flex justify-end space-x-4 mt-4 pt-4" style="border-top: 1px solid var(--border-color)">
+           <button @click="$emit('history', task)" class="text-amber-400 font-bold text-xs flex items-center">
+             <HistoryIcon class="w-3 h-3 mr-1" /> {{ $t('history.title') }}
+           </button>
            <button @click="$emit('edit', task)" class="text-emerald-400 font-bold text-xs flex items-center">
              <Settings2Icon class="w-3 h-3 mr-1" /> {{ $t('common.edit') }}
            </button>
            <button @click="$emit('delete', task.id)" class="bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center transition-all">
              <TrashIcon class="w-3 h-3 mr-1" /> {{ $t('common.delete') }}
            </button>
-        </div>
+         </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ZapIcon, PlayIcon, Settings2Icon, TrashIcon } from 'lucide-vue-next'
-
+import { ZapIcon, PlayIcon, Settings2Icon, TrashIcon, HistoryIcon } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 
 const props = defineProps({
   tasks: Array
 })
 
-const emit = defineEmits(['trigger', 'edit', 'delete'])
+const emit = defineEmits(['trigger', 'edit', 'delete', 'history'])
 
 const { t } = useI18n()
 
@@ -123,6 +128,11 @@ const getStatusClass = (status) => {
   if (status === 'running') return 'bg-emerald-500 shadow-[0_0_8px_rgba(34,197,94,0.5)] animate-pulse'
   if (status && status.startsWith('error')) return 'bg-red-500'
   return 'bg-gray-500'
+}
+
+const formatSchedule = (task) => {
+  if (task.schedule_type === 'cron' && task.cron_expr) return task.cron_expr
+  return Math.round(task.interval / 60) + ' ' + t('tasks.minutes')
 }
 
 const formatTime = (isoStr) => {

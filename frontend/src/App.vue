@@ -30,6 +30,7 @@
         @trigger-task="triggerTask"
         @edit-task="openTaskModal"
         @delete-task="deleteTask"
+        @history-task="openHistoryModal"
         @refresh="fetchLogs"
         @update="updateSettings"
         @update-avatar="uploadAvatar"
@@ -67,6 +68,13 @@
       @confirm="confirmPicker"
     />
 
+    <TaskHistoryModal
+      :is-open="showHistoryModal"
+      :task-id="historyTaskId"
+      :task-name="historyTaskName"
+      @close="showHistoryModal = false"
+    />
+
     
     <Teleport to="body">
       <div v-if="notification" class="fixed top-8 left-1/2 -translate-x-1/2 z-[1000] animate-in fade-in slide-in-from-top-4 duration-500">
@@ -97,6 +105,7 @@ import SettingsView from './views/SettingsView.vue'
 import AccountModal from './components/modals/AccountModal.vue'
 import TaskModal from './components/modals/TaskModal.vue'
 import FilePickerModal from './components/modals/FilePickerModal.vue'
+import TaskHistoryModal from './components/modals/TaskHistoryModal.vue'
 
 const { t, locale } = useI18n()
 
@@ -113,10 +122,14 @@ const notification = ref(null)
 const showAccountModal = ref(false)
 const showTaskModal = ref(false)
 const showDirPicker = ref(false)
+const showHistoryModal = ref(false)
+const historyTaskId = ref('')
+const historyTaskName = ref('')
 const testing = ref(false)
+const taskHistory = ref([])
 
 const newAcc = ref({ type: 'webdav', name: '', url: '', username: '', password: '', token: '' })
-const newTask = ref({ name: '', src_account_id: '', dst_account_id: '', src_path: '/', dst_path: '/', interval: 600, enabled: true, refresh_source: false, src_type: 'webdav', concurrency: 10, smart_scan: true })
+const newTask = ref({ name: '', src_account_id: '', dst_account_id: '', src_path: '/', dst_path: '/', interval: 600, enabled: true, refresh_source: false, src_type: 'webdav', concurrency: 10, smart_scan: true, schedule_type: 'interval', cron_expr: '', max_retries: 0, retry_delay: 60 })
 const picker = ref({ loading: false, items: [], path: '/', accountId: '', targetField: '' })
 
 const CurrentViewComponent = computed(() => {
@@ -133,7 +146,7 @@ const CurrentViewComponent = computed(() => {
 
 const viewProps = computed(() => {
   switch (currentView.value) {
-    case 'dashboard': return { tasks: tasks.value, accounts: accounts.value }
+    case 'dashboard': return { tasks: tasks.value, accounts: accounts.value, taskHistory: taskHistory.value }
     case 'webdav': return { 
         accounts: accounts.value.filter(a => a.type === 'webdav'), 
         tasks: tasks.value.filter(t => {
@@ -277,7 +290,11 @@ const openTaskModal = (task = null) => {
         refresh_source: false,
         src_type: isLocal ? 'local' : 'webdav',
         concurrency: 10,
-        smart_scan: true
+        smart_scan: true,
+        schedule_type: 'interval',
+        cron_expr: '',
+        max_retries: 0,
+        retry_delay: 60
     }
   }
   showTaskModal.value = true
@@ -307,6 +324,7 @@ const startPolling = () => {
   pollTimer = setInterval(() => {
     if (isLoggedIn.value && document.visibilityState === 'visible') {
       fetchConfig()
+      fetchTaskHistory()
       if (currentView.value === 'logs') fetchLogs()
     }
   }, 3000)
@@ -328,6 +346,7 @@ watch(currentView, (val) => {
 onMounted(() => {
   if (isLoggedIn.value) {
     fetchConfig()
+    fetchTaskHistory()
     startPolling()
   }
 })
@@ -348,6 +367,19 @@ const triggerTask = async (id) => {
     notify('Trigger failed', 'error')
     fetchConfig()
   }
+}
+
+const openHistoryModal = (task) => {
+  historyTaskId.value = task.id
+  historyTaskName.value = task.name
+  showHistoryModal.value = true
+}
+
+const fetchTaskHistory = async () => {
+  try {
+    const res = await axios.get('/api/stats/history')
+    taskHistory.value = res.data
+  } catch { taskHistory.value = [] }
 }
 
 const openPicker = async (field, accId) => {

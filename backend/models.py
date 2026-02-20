@@ -22,7 +22,7 @@ class MonitorTask(BaseModel):
     src_account_id: Optional[str] = None
     dst_account_id: Optional[str] = ""
     src_path: str
-    src_type: str = "webdav" # webdav, alist, local
+    src_type: str = "webdav"
     dst_path: Optional[str] = "/"
     concurrency: int = 10
     interval: int = 600
@@ -30,7 +30,27 @@ class MonitorTask(BaseModel):
     last_run: Optional[str] = None
     status: str = "idle"
     refresh_source: bool = False
+    refresh_destination: bool = True
+    use_polling: bool = False
     smart_scan: bool = True
+    schedule_type: str = "interval"
+    cron_expr: str = ""
+    max_retries: int = 0
+    retry_delay: int = 60
+
+class TaskRunRecord(BaseModel):
+    task_id: str
+    task_name: str
+    start_time: str
+    end_time: str
+    duration_seconds: float = 0
+    status: str = "success"
+    items_scanned: int = 0
+    new_files: int = 0
+    modified_files: int = 0
+    deleted_files: int = 0
+    dirs_refreshed: int = 0
+    error_message: str = ""
 
 class UserSettings(BaseModel):
     username: str = "admin"
@@ -42,6 +62,7 @@ class Config(BaseModel):
     accounts: List[Account] = []
     tasks: List[MonitorTask] = []
     settings: UserSettings = UserSettings()
+    task_history: List[TaskRunRecord] = []
 
 def load_config() -> Config:
     config_updated = False

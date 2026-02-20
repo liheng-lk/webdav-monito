@@ -22,11 +22,15 @@
       <div class="flex items-start space-x-3">
         <InfoIcon class="w-5 h-5 text-emerald-400 mt-0.5 flex-shrink-0" />
         <div>
-          <h4 class="text-emerald-400 font-bold text-sm">Watchdog 实时监控</h4>
-          <p class="text-xs mt-1" style="color: var(--text-secondary)">
-            通过 Watchdog 实时监听本地挂载目录的文件变化，自动触发 Alist 刷新。
-            请确保目标目录已通过 Docker Volume 挂载到容器内。
-          </p>
+          <div class="space-y-1">
+            <h4 class="text-emerald-400 font-bold text-sm">Watchdog 实时监控</h4>
+            <p class="text-xs" style="color: var(--text-secondary)">
+              通过 Watchdog 实时监听本地挂载目录的文件变化，自动触发扫描。
+            </p>
+            <p class="text-[10px]" style="color: var(--text-muted)">
+              注：Alist 刷新和扫描模式 (Native/Polling) 可在任务设置中配置。请确保目标目录已通过 Docker Volume 挂载。
+            </p>
+          </div>
         </div>
       </div>
     </div>
@@ -46,6 +50,7 @@
         @trigger="$emit('trigger-task', $event)"
         @edit="$emit('edit-task', $event)"
         @delete="$emit('delete-task', $event)"
+        @history="$emit('history-task', $event)"
       />
       
       <div v-if="tasks.length === 0" class="glass-card border-dashed rounded-[2rem] py-16 flex flex-col items-center justify-center group hover:border-emerald-500/30 transition-all cursor-pointer" style="color: var(--text-muted)" @click="$emit('add-task')">
@@ -67,5 +72,5 @@ defineProps({
   tasks: { type: Array, default: () => [] }
 })
 
-defineEmits(['add-task', 'trigger-task', 'edit-task', 'delete-task'])
+defineEmits(['add-task', 'trigger-task', 'edit-task', 'delete-task', 'history-task'])
 </script>

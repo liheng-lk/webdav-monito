@@ -521,9 +521,10 @@ class AlistService:
                                         cur_mtime = res[sd].get('mtime')
                                         old_mtime = old_state[sd].get('mtime')
                                         if cur_mtime and old_mtime and cur_mtime == old_mtime:
-                                            logger.debug(f"SmartScan: Skipping {sd}")
+                                            logger.info(f"SmartScan: Skipping {sd} (Matches old state)")
                                             should_recurse = False
-                                            copy_descendants_from_old_state(sd)
+                                            copied = copy_descendants_from_old_state(sd)
+                                            logger.info(f"SmartScan: Copied {copied} items for {sd}")
                                     
                                     if should_recurse:
                                         new_f = executor.submit(AlistService._list_dir_rich_worker, session, url, token, sd, refresh)
